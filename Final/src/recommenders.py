@@ -45,8 +45,11 @@ class MainRecommender:
 
     @staticmethod
     def prepare_matrix(data):
-        # your_code
-
+        user_item_matrix = pd.pivot_table(data,
+                                          index='user_id', columns='item_id',
+                                          values='sales_value',
+                                          aggfunc='count',
+                                          fill_value=0)
         return user_item_matrix
 
     @staticmethod
@@ -90,17 +93,20 @@ class MainRecommender:
 
     def get_similar_items_recommendation(self, user, N=5):
         """Рекомендуем товары, похожие на топ-N купленных юзером товаров"""
-
-        # your_code
-        # Практически полностью реализовали на прошлом вебинаре
-
+        self.
+        rec_results['als'] = rec_results['user_id'].apply(lambda x: get_recommendations(x,model=model,N=N))
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
     def get_similar_users_recommendation(self, user, N=5):
         """Рекомендуем топ-N товаров, среди купленных похожими юзерами"""
         # your_code
-
+        res = [id_to_itemid[rec[0]] for rec in self.model.recommend(userid=userid_to_id[user],
+                                                         user_items=sparse_user_item,
+                                                         N=N,
+                                                         filter_already_liked_items=False,
+                                                         filter_items=None,
+                                                         recalculate_user=True)]
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
