@@ -18,7 +18,7 @@ def reduce_dims(df, dims=2, method='pca'):
     else:
         print('Error')
     colnames = ['component_' + str(i) for i in range(1, dims + 1)]
-    return pd.DataFrame(data = components, columns = colnames)
+    return pd.DataFrame(data=components, columns=colnames)
 
 
 class MainRecommender:
@@ -94,7 +94,7 @@ class MainRecommender:
     def get_similar_items_recommendation(self, user, N=5):
         """Рекомендуем товары, похожие на топ-N купленных юзером товаров"""
         self.
-        rec_results['als'] = rec_results['user_id'].apply(lambda x: get_recommendations(x,model=model,N=N))
+        rec_results['als'] = rec_results['user_id'].apply(lambda x: get_recommendations(x, model=model, N=N))
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
@@ -102,11 +102,11 @@ class MainRecommender:
         """Рекомендуем топ-N товаров, среди купленных похожими юзерами"""
         # your_code
         res = [id_to_itemid[rec[0]] for rec in self.model.recommend(userid=userid_to_id[user],
-                                                         user_items=sparse_user_item,
-                                                         N=N,
-                                                         filter_already_liked_items=False,
-                                                         filter_items=None,
-                                                         recalculate_user=True)]
+                                                                    user_items=sparse_user_item,
+                                                                    N=N,
+                                                                    filter_already_liked_items=False,
+                                                                    filter_items=None,
+                                                                    recalculate_user=True)]
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
