@@ -137,9 +137,9 @@ class MainRecommender:
             scores.append(score)
         return scores
 
-    def best_params(models_scores, all=False):
+    def best_params(models_scores, _all=False):
         df = pd.DataFrame(models_scores, index=range(len(models_scores))).sort_values('precision', ascending=False)
-        if all:
+        if _all:
             return df
         df = df.head(1)
         return df.to_dict()
