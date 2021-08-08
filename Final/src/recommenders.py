@@ -1,3 +1,5 @@
+from src.metrics import precision_at_k
+
 import pandas as pd
 import numpy as np
 
@@ -177,3 +179,17 @@ class MainRecommender:
 
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
+
+    @staticmethod
+    def compare_models(self, result_lvl_1):
+        recommenders = [name for name, val in MainRecommender.__dict__.items() if callable(val)][-4:]
+        n = 50
+        for r in recommenders:
+            model_name_col = r.replace('get_', '').replace('_recommendations', '')
+            result_lvl_1[model_name_col] = result_lvl_1['user_id'].apply(lambda x: eval(f'recommender.{r}({x}, N={n})'))
+            result_lvl_1[model_name_col + '_score'] = result_lvl_1.apply(
+                lambda x: precision_at_k(x[model_name_col], x['actual'], k=n), axis=1).mean()
+            print(model_name_col, 'is ready.')
+
+        score_columns = [item for item in result_lvl_1.columns.tolist() if 'score' in item]
+        print(result_lvl_1[score_columns].head(1))
