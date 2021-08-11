@@ -7,6 +7,9 @@ import yaml
 import sys
 import inspect
 from pprint import pprint
+import warnings
+
+warnings.filterwarnings('ignore')
 
 
 def load_settings(need_print=False):
@@ -23,7 +26,7 @@ def load_settings(need_print=False):
         print('\nLoaded following functions:')
         pprint([obj[0] for obj in inspect.getmembers(sys.modules[__name__], inspect.isfunction)])
         print(f"\nLoaded following constants:")
-        [print(f'{key:17} = {val:10} | {type(val)}') for key, val in _CONSTANTS.items()]
+        [print(f'{key:20} = {val:20} | {type(val)}') for key, val in _CONSTANTS.items()]
     return _CONSTANTS
 
 
@@ -89,6 +92,10 @@ class Dataset:
 
         # remove text data
         self.user_features = self.user_features.iloc[:, 5:]
+        self.item_features = self.item_features[[self._CONSTANTS['ITEM_COL'],
+                                                 'manufacturer',
+                                                 'brand',
+                                                 'commodity_type']]
 
         # iterate throw train and test
         for i in ['train', 'test']:
@@ -146,15 +153,15 @@ class Dataset:
                    val_lvl_2_size_weeks=_CONSTANTS['VAL_RANKER_WEEKS']):
 
         self.data_train_lvl_1 = self.data_train[self.data_train['week_no'] < self.data_train['week_no'].max() - \
-                                           (val_lvl_1_size_weeks + val_lvl_2_size_weeks)]
+                                                (val_lvl_1_size_weeks + val_lvl_2_size_weeks)]
         self.data_val_lvl_1 = self.data_train[(self.data_train['week_no'] >= self.data_train['week_no'].max() - \
-                                          (val_lvl_1_size_weeks + val_lvl_2_size_weeks)) & \
-                                         (self.data_train['week_no'] < self.data_train['week_no'].max() - \
-                                          (val_lvl_2_size_weeks))]
+                                               (val_lvl_1_size_weeks + val_lvl_2_size_weeks)) & \
+                                              (self.data_train['week_no'] < self.data_train['week_no'].max() - \
+                                               (val_lvl_2_size_weeks))]
 
         self.data_train_lvl_2 = self.data_val_lvl_1.copy()
         self.data_val_lvl_2 = self.data_train[self.data_train['week_no'] >= self.data_train['week_no'].max() - \
-                                         val_lvl_2_size_weeks]
+                                              val_lvl_2_size_weeks]
 
         self.result_lvl_1 = self.data_val_lvl_1.groupby(_CONSTANTS['USER_COL'])[
             _CONSTANTS['ITEM_COL']].unique().reset_index()
