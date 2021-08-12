@@ -86,30 +86,49 @@ class MainRecommender:
         own_recommender.fit(csr_matrix(user_item_matrix).T.tocsr())
         return own_recommender
 
-    def preprocessing(self, dataset, t='train'):
+    def recommend_1lvl(self, data_actual):
+        data_actual['own_recs'] = data_actual[self._CONSTANTS['USER_COL']].apply(
+            lambda x: self.get_own_recommendations(x, N=self._CONSTANTS['N_PREDICT']))
+
+        data_actual['own_recs_score'] = data_actual.apply(
+            lambda x: precision_at_k(x['own_recs'], x['actual'], k=self._CONSTANTS['TOPK_PRECISION']), axis=1).mean()
+
+        return data_actual
+
+    def preprocessing(self, dataset, t='train', training=True):
         """
         Prepare data for ranker -- splitting in correct way
         :param dataset: object of Dataset class
         :param t: 'train' (data_train_lvl_2) or 'valuate' (data_val_lvl_2)
+        :param training: if use dataset.data_test - use True
         :return: X and y
         """
-        if t == 'train':
-            df = dataset.data_train_lvl_2
+
+        if training:
+            data_train_lvl_1 = dataset.data_train_lvl_1
+            if t == 'train':
+                df = dataset.data_train_lvl_2
+            else:
+                df = dataset.data_val_lvl_2
         else:
-            df = dataset.data_val_lvl_2
+            data_train_lvl_1 = dataset.data_train_lvl_1_real
+            if t == 'train':
+                df = dataset.data_train_lvl_2_real
+            else:
+                df = dataset.data_val_lvl_2_real
 
         # creating dataset for ranking
         df_match_candidates = pd.DataFrame(df[self._CONSTANTS['USER_COL']].unique())
         df_match_candidates.columns = [self._CONSTANTS['USER_COL']]
         df_match_candidates = df_match_candidates[
             df_match_candidates[self._CONSTANTS['USER_COL']].isin(
-                dataset.data_train_lvl_1[self._CONSTANTS['USER_COL']].unique())]
+                data_train_lvl_1[self._CONSTANTS['USER_COL']].unique())]
         df_match_candidates['candidates'] = df_match_candidates[self._CONSTANTS['USER_COL']].apply(
             lambda x: self.get_own_recommendations(x, N=self._CONSTANTS['N_PREDICT']))
 
-        df_items = df_match_candidates.apply(lambda x: pd.Series(x['candidates']), axis=1)\
-                                      .stack()\
-                                      .reset_index(level=1, drop=True)
+        df_items = df_match_candidates.apply(lambda x: pd.Series(x['candidates']), axis=1) \
+            .stack() \
+            .reset_index(level=1, drop=True)
         df_items.name = self._CONSTANTS['ITEM_COL']
         df_match_candidates = df_match_candidates.drop('candidates', axis=1).join(df_items)
 
@@ -125,14 +144,24 @@ class MainRecommender:
         df_ranker_train = df_ranker_train.merge(dataset.item_features, on=self._CONSTANTS['ITEM_COL'], how='left')
         df_ranker_train = df_ranker_train.merge(dataset.user_features, on=self._CONSTANTS['USER_COL'], how='left')
 
-        if t == "train":
-            # train split
-            self.X_train = df_ranker_train.drop('target', axis=1)
-            self.y_train = df_ranker_train[['target']]
+        if training:
+            if t == "train":
+                # train split
+                self.X_train = df_ranker_train.drop('target', axis=1)
+                self.y_train = df_ranker_train[['target']]
+            else:
+                # test split
+                self.X_test = df_ranker_train.drop('target', axis=1)
+                self.y_test = df_ranker_train[['target']]
         else:
-            # test split
-            self.X_test = df_ranker_train.drop('target', axis=1)
-            self.y_test = df_ranker_train[['target']]
+            if t == "train":
+                # train split
+                self.X_train_real = df_ranker_train.drop('target', axis=1)
+                self.y_train_real = df_ranker_train[['target']]
+            else:
+                # test split
+                self.X_test_real = df_ranker_train.drop('target', axis=1)
+                self.y_test_real = df_ranker_train[['target']]
 
     @staticmethod
     def fit(user_item_matrix, n_factors=20, regularization=0.001, iterations=15, num_threads=4):
@@ -162,8 +191,10 @@ class MainRecommender:
         top_rec = recs[1][0]  # И берем второй (не товар из аргумента метода)
         return self.id_to_itemid[top_rec]
 
-    def _extend_with_top_popular(self, recommendations, N=5):
+    def _extend_with_top_popular(self, recommendations, N=None):
         """Если кол-во рекоммендаций < N, то дополняем их топ-популярными"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
 
         if len(recommendations) < N:
             recommendations.extend(self.overall_top_purchases[:N])
@@ -171,34 +202,47 @@ class MainRecommender:
 
         return recommendations
 
-    def _get_recommendations(self, user, model, N=5):
+    def _get_recommendations(self, user, model, N=None):
         """Рекомендации через стардартные библиотеки implicit"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
+
         self._update_dict(user_id=user)
+        if 999999 in self.itemid_to_id:
+            filt = [self.itemid_to_id[999999]]
+        else:
+            filt = None
         res = [self.id_to_itemid[rec[0]] for rec in model.recommend(userid=self.userid_to_id[user],
                                                                     user_items=csr_matrix(
                                                                         self.user_item_matrix).tocsr(),
                                                                     N=N,
                                                                     filter_already_liked_items=False,
-                                                                    filter_items=[self.itemid_to_id[999999]],
+                                                                    filter_items=filt,
                                                                     recalculate_user=True)]
         res = self._extend_with_top_popular(res, N=N)
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
-    def get_als_recommendations(self, user, N=5):
+    def get_als_recommendations(self, user, N=None):
         """Рекомендации через стардартные библиотеки implicit"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
 
         self._update_dict(user_id=user)
         return self._get_recommendations(user, model=self.model, N=N)
 
-    def get_own_recommendations(self, user, N=5):
+    def get_own_recommendations(self, user, N=None):
         """Рекомендуем товары среди тех, которые юзер уже купил"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
 
         self._update_dict(user_id=user)
         return self._get_recommendations(user, model=self.own_recommender, N=N)
 
-    def get_similar_items_recommendation(self, user_id, N=5):
+    def get_similar_items_recommendation(self, user_id, N=None):
         """Рекомендуем товары, похожие на топ-N купленных юзером товаров"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
 
         top_users_purchases = self.top_purchases[self.top_purchases[self._CONSTANTS['USER_COL']] == user_id].head(N)
 
@@ -208,8 +252,10 @@ class MainRecommender:
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
-    def get_similar_users_recommendation(self, user_id, N=5):
+    def get_similar_users_recommendation(self, user_id, N=None):
         """Рекомендуем топ-N товаров, среди купленных похожими юзерами"""
+        if not N:
+            N = self._CONSTANTS['N_PREDICT']
 
         res = []
 
@@ -226,18 +272,28 @@ class MainRecommender:
         assert len(res) == N, 'Количество рекомендаций != {}'.format(N)
         return res
 
-    def ranker_fit(self):
+    def ranker_fit(self, training=True):
 
+        if training:
+            X_train = self.X_train
+            y_train = self.y_train
+            X_test  = self.X_test
+            y_test  = self.y_test
+        else:
+            X_train = self.X_train_real
+            y_train = self.y_train_real
+            X_test = self.X_test_real
+            y_test = self.y_test_real
         # формируем фичи для обучения
-        self.cat_feats = self.X_train.columns[2:].tolist()
+        cat_feats = X_train.columns[2:].tolist()
 
-        train_pool = Pool(data=self.X_train[self.cat_feats],
-                          label=self.y_train,
-                          group_id=self.X_train[self._CONSTANTS['USER_COL']])
+        train_pool = Pool(data=X_train[cat_feats],
+                          label=y_train,
+                          group_id=X_train[self._CONSTANTS['USER_COL']])
 
-        test_pool = Pool(data=self.X_test[self.cat_feats],
-                         label=self.y_test,
-                         group_id=self.X_test[self._CONSTANTS['USER_COL']])
+        test_pool = Pool(data=X_test[cat_feats],
+                         label=y_test,
+                         group_id=X_test[self._CONSTANTS['USER_COL']])
 
         parameters = {'loss_function': self._CONSTANTS['CATBOOST_RANKER'],
                       'train_dir': self._CONSTANTS['CATBOOST_RANKER'],
@@ -249,18 +305,71 @@ class MainRecommender:
 
         ranker_model = CatBoostRanker(**parameters)
         ranker_model.fit(train_pool, eval_set=test_pool, plot=True)
-        self.ranker_model = ranker_model
 
-    def ranker_predict(self, df):
-        df['proba'] = catboost.CatBoost.predict(self.ranker_model,
-                                                df,
-                                                prediction_type='Probability')[:, 1]
+        if training:
+            self.ranker_model = ranker_model
+        else:
+            self.ranker_model_real = ranker_model
+
+    def ranker_predict(self, df, training=True):
+        if training:
+            ranker_model = self.ranker_model
+        else:
+            ranker_model = self.ranker_model_real
+        df['predict'] = catboost.CatBoost.predict(ranker_model,
+                                                  df,
+                                                  prediction_type='Probability')[:, 1]
         return df
+
+    @staticmethod
+    def rerank(df, user_id):
+        return df[df['user_id'] == user_id].sort_values('predict', ascending=False).head(5).item_id.tolist()
+
+    def evaluate_2models(self, training=True):
+
+        if training:
+             X_test = self.X_test
+             y_test = self.y_test
+        else:
+            X_test = self.X_test_real
+            y_test = self.y_test_real
+
+        result_eval_ranker = X_test.groupby('user_id')['item_id'].unique().reset_index()
+        result_eval_ranker.columns = ['user_id', 'actual']
+
+        # get real target answers
+        X_test_y = X_test.merge(y_test, right_index=True, left_index=True)
+        y_test_unique = X_test_y[X_test_y['target'] == 1.0].groupby('user_id')['item_id'].unique().reset_index()
+        y_test_unique.columns = ['user_id', 'y_actual']
+        y_test_unique.head(2)
+
+        # add y_test as y_actual
+        result_eval_ranker = result_eval_ranker.merge(y_test_unique, on='user_id', how='left').fillna("").apply(list)
+
+        # add probabilities
+        X_test = self.ranker_predict(X_test, training=training)
+
+        result_eval_ranker['own_rec'] = result_eval_ranker['user_id'].apply(
+            lambda x: self.get_own_recommendations(x, N=self._CONSTANTS['N_PREDICT']))
+
+        result_eval_ranker['ranked_own_rec'] = result_eval_ranker['user_id'].apply(
+            lambda user_id: self.rerank(X_test, user_id))
+
+        precision_ranked_matcher = result_eval_ranker[self._CONSTANTS['USER_COL']].apply(lambda x: precision_at_k(
+            result_eval_ranker.loc[result_eval_ranker[self._CONSTANTS['USER_COL']] == x, 'ranked_own_rec'].squeeze(),
+            result_eval_ranker.loc[result_eval_ranker[self._CONSTANTS['USER_COL']] == x, 'y_actual'].squeeze(),
+            k=self._CONSTANTS["TOPK_PRECISION"])).mean()
+
+        print(f'precision@{self._CONSTANTS["TOPK_PRECISION"]} of 2lvl-model is {precision_ranked_matcher}')
+
+        if not training:
+            result_eval_ranker.to_csv('result_test.csv', index=False)
+            print('Файл с результатами сохранен.')
 
     @staticmethod
     def compare_1lvl_models(self, result_lvl_1):
         recommenders = [name for name, val in MainRecommender.__dict__.items() if callable(val)][-4:]
-        n = 50
+        n = self._CONSTANTS["N_PREDICT"]
         for r in recommenders:
             model_name_col = r.replace('get_', '').replace('_recommendations', '')
             result_lvl_1[model_name_col] = result_lvl_1[self._CONSTANTS['USER_COL']].apply(

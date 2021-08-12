@@ -138,8 +138,9 @@ class Dataset:
             df = df.loc[df[_CONSTANTS['ITEM_COL']].isin(items_365)]
             del items_365
 
-            # change item_id to fakes where we think user "already" served his needs
-            df.loc[df['quantity_total'] >= _CONSTANTS['TAKE_N_POPULAR'], _CONSTANTS['ITEM_COL']] = 999999
+            if make_worse:
+                # change item_id to fakes where we think user "already" served his needs
+                df.loc[df['quantity_total'] >= _CONSTANTS['TAKE_N_POPULAR'], _CONSTANTS['ITEM_COL']] = 999999
 
             # commit instance changes
             if i == 'train':
@@ -152,26 +153,48 @@ class Dataset:
                    val_lvl_1_size_weeks=_CONSTANTS['VAL_MATCHER_WEEKS'],
                    val_lvl_2_size_weeks=_CONSTANTS['VAL_RANKER_WEEKS']):
 
-        self.data_train_lvl_1 = self.data_train[self.data_train['week_no'] < self.data_train['week_no'].max() - \
-                                                (val_lvl_1_size_weeks + val_lvl_2_size_weeks)]
-        self.data_val_lvl_1 = self.data_train[(self.data_train['week_no'] >= self.data_train['week_no'].max() - \
-                                               (val_lvl_1_size_weeks + val_lvl_2_size_weeks)) & \
-                                              (self.data_train['week_no'] < self.data_train['week_no'].max() - \
-                                               (val_lvl_2_size_weeks))]
+        # iterate throw train and test
+        for i in ['train', 'test']:
+            print(i)
+            if i == 'train':
+                df = self.data_train.copy()
+            else:
+                df = self.data_test.copy()
 
-        self.data_train_lvl_2 = self.data_val_lvl_1.copy()
-        self.data_val_lvl_2 = self.data_train[self.data_train['week_no'] >= self.data_train['week_no'].max() - \
-                                              val_lvl_2_size_weeks]
+            data_train_lvl_1 = df[df['week_no'] < df['week_no'].max() - \
+                                  (val_lvl_1_size_weeks + val_lvl_2_size_weeks)]
+            data_val_lvl_1 = df[(df['week_no'] >= df['week_no'].max() - \
+                                 (val_lvl_1_size_weeks + val_lvl_2_size_weeks)) & \
+                                (df['week_no'] < df['week_no'].max() - \
+                                 (val_lvl_2_size_weeks))]
 
-        self.result_lvl_1 = self.data_val_lvl_1.groupby(_CONSTANTS['USER_COL'])[
-            _CONSTANTS['ITEM_COL']].unique().reset_index()
-        self.result_lvl_1.columns = [_CONSTANTS['USER_COL'], _CONSTANTS['ACTUAL_COL']]
+            data_train_lvl_2 = data_val_lvl_1.copy()
+            data_val_lvl_2 = df[df['week_no'] >= df['week_no'].max() - \
+                                val_lvl_2_size_weeks]
 
-        self.users_train = self.data_train_lvl_1[_CONSTANTS['USER_COL']].tolist()
-        self.users_valid = self.result_lvl_1[_CONSTANTS['USER_COL']].tolist()
-        self.new_users = list(set(self.users_valid) - set(self.users_train))
-        self.all_users = list(set(self.users_valid) & set(self.users_train))
-        self.result_lvl_1 = self.result_lvl_1[~self.result_lvl_1[_CONSTANTS['USER_COL']].isin(self.new_users)]
+            result_lvl_1 = data_val_lvl_1.groupby(_CONSTANTS['USER_COL'])[
+                _CONSTANTS['ITEM_COL']].unique().reset_index()
+            result_lvl_1.columns = [_CONSTANTS['USER_COL'], _CONSTANTS['ACTUAL_COL']]
+
+            users_train = data_train_lvl_1[_CONSTANTS['USER_COL']].tolist()
+            users_valid = result_lvl_1[_CONSTANTS['USER_COL']].tolist()
+            new_users = list(set(users_valid) - set(users_train))
+            all_users = list(set(users_valid) & set(users_train))
+            result_lvl_1 = result_lvl_1[~result_lvl_1[_CONSTANTS['USER_COL']].isin(new_users)]
+
+            # commit instance changes
+            if i == 'train':
+                self.data_train_lvl_1 = data_train_lvl_1.copy()
+                self.data_val_lvl_1 = data_val_lvl_1.copy()
+                self.data_train_lvl_2 = data_train_lvl_2.copy()
+                self.data_val_lvl_2 = data_val_lvl_2.copy()
+                self.result_lvl_1 = result_lvl_1.copy()
+            else:
+                self.data_train_lvl_1_real = data_train_lvl_1.copy()
+                self.data_val_lvl_1_real = data_val_lvl_1.copy()
+                self.data_train_lvl_2_real = data_train_lvl_2.copy()
+                self.data_val_lvl_2_real = data_val_lvl_2.copy()
+                self.result_lvl_1_real = result_lvl_1.copy()
 
     def postfilter_items(user_id, recommendations):
         pass
