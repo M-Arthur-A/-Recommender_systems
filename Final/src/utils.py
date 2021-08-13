@@ -155,7 +155,6 @@ class Dataset:
 
         # iterate throw train and test
         for i in ['train', 'test']:
-            print(i)
             if i == 'train':
                 df = self.data_train.copy()
             else:
@@ -195,6 +194,31 @@ class Dataset:
                 self.data_train_lvl_2_real = data_train_lvl_2.copy()
                 self.data_val_lvl_2_real = data_val_lvl_2.copy()
                 self.result_lvl_1_real = result_lvl_1.copy()
+
+    def data_test_split(self):
+        # iterate throw train and test
+        data_train_lvl_1 = self.data_train.copy()
+        data_val_lvl_1 = self.data_test.copy()
+
+        data_train_lvl_2 = data_val_lvl_1.copy()
+        data_val_lvl_2 = data_val_lvl_1.copy()
+
+        result_lvl_1 = data_val_lvl_1.groupby(_CONSTANTS['USER_COL'])[
+            _CONSTANTS['ITEM_COL']].unique().reset_index()
+        result_lvl_1.columns = [_CONSTANTS['USER_COL'], _CONSTANTS['ACTUAL_COL']]
+
+        users_train = data_train_lvl_1[_CONSTANTS['USER_COL']].tolist()
+        users_valid = result_lvl_1[_CONSTANTS['USER_COL']].tolist()
+        new_users = list(set(users_valid) - set(users_train))
+        all_users = list(set(users_valid) & set(users_train))
+        result_lvl_1 = result_lvl_1[~result_lvl_1[_CONSTANTS['USER_COL']].isin(new_users)]
+
+        # commit instance changes
+        self.data_train_lvl_1_real = data_train_lvl_1.copy()
+        self.data_val_lvl_1_real = data_val_lvl_1.copy()
+        self.data_train_lvl_2_real = data_train_lvl_2.copy()
+        self.data_val_lvl_2_real = data_val_lvl_2.copy()
+        self.result_lvl_1_real = result_lvl_1.copy()
 
     def postfilter_items(user_id, recommendations):
         pass

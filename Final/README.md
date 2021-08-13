@@ -93,6 +93,7 @@ recommender.evaluate_2models()
 * сохраняем результат в .xml
 
 ```python
+data.data_test_split()
 recommender = MainRecommender(data.data_train_lvl_1_real)
 recommender.preprocessing(data, t='train', training=False)
 recommender.preprocessing(data, t='test', training=False)
